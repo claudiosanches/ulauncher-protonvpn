@@ -315,7 +315,7 @@ class ProtonVPN:
             When not connected (or not yet known).
         dict
             When connected, with keys:
-                server    – e.g. "BR#116 in São Paulo, Brazil"
+                server    – e.g. "NL#42 in Amsterdam, Netherlands"
                 load      – e.g. "29%"
                 protocol  – e.g. "wireguard"
                 ip        – cached IP from last connect, or None

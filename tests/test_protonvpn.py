@@ -1,6 +1,7 @@
 """Tests for src/protonvpn.py"""
 
 import json
+import subprocess
 import time
 from unittest.mock import MagicMock, patch
 
@@ -17,7 +18,7 @@ COUNTRIES_OUTPUT = """\
 Server list is outdated, updating... This may take a moment.
 Country                           Code
 --------------------------------  ------
-Brazil                            BR
+Netherlands                       NL
 Germany                           DE
 United States                     US
 Bosnia and Herzegovina            BA
@@ -32,9 +33,18 @@ Atlanta         P2P, Tor
 New York        P2P
 """
 
+CITIES_NL_OUTPUT = """\
+Cities in Netherlands:
+City            Features
+--------------  ----------
+
+Amsterdam
+Rotterdam       P2P
+"""
+
 STATUS_CONNECTED = """\
 Status: Connected
-Server: BR#116 in São Paulo, Brazil
+Server: NL#42 in Amsterdam, Netherlands
 Load: 29%
 Protocol: wireguard
 """
@@ -42,7 +52,7 @@ Protocol: wireguard
 STATUS_DISCONNECTED = "Status: Disconnected\n"
 
 CONNECT_OUTPUT = """\
-Connected to BR#116 in São Paulo, Brazil.\x20
+Connected to NL#42 in Amsterdam, Netherlands.\x20
 Your new IP address is 146.70.98.133.
 """
 
@@ -92,6 +102,32 @@ class TestIsInstalled:
 
 
 class TestCachePersistence:
+    def test_load_cache_restores_persisted_status(self, tmp_path):
+        data = {
+            "countries": [{"name": "Netherlands", "code": "NL"}],
+            "cities": {},
+            "status": {
+                "server": "NL#42 in Amsterdam, Netherlands",
+                "load": "30%",
+                "protocol": "wireguard",
+                "ip": "1.2.3.4",
+            },
+        }
+        cache = tmp_path / "cache.json"
+        cache.write_text(json.dumps(data))
+        pvpn = ProtonVPN()
+        pvpn.CACHE_FILE = cache
+        pvpn._load_cache()
+        assert pvpn._status_cache_empty is False
+        assert pvpn._status_cache is not None
+        assert pvpn._status_cache["server"] == "NL#42 in Amsterdam, Netherlands"
+
+    def test_save_cache_silences_os_error(self):
+        pvpn = ProtonVPN()
+        pvpn.CACHE_FILE = MagicMock()
+        pvpn.CACHE_FILE.parent.mkdir.side_effect = OSError("disk full")
+        pvpn._save_cache()  # must not raise
+
     def test_has_cache_false_when_no_countries_loaded(self):
         pvpn = ProtonVPN()
         pvpn._countries = []
@@ -99,7 +135,7 @@ class TestCachePersistence:
 
     def test_has_cache_true_when_countries_loaded(self):
         pvpn = ProtonVPN()
-        pvpn._countries = [{"name": "Brazil", "code": "BR"}]
+        pvpn._countries = [{"name": "Netherlands", "code": "NL"}]
         assert pvpn.has_cache() is True
 
     def test_has_cache_false_after_corrupt_file(self, tmp_path):
@@ -112,8 +148,8 @@ class TestCachePersistence:
 
     def test_load_cache_populates_countries_and_cities(self, tmp_path):
         data = {
-            "countries": [{"name": "Brazil", "code": "BR"}],
-            "cities": {"BR": [{"name": "São Paulo", "features": ""}]},
+            "countries": [{"name": "Netherlands", "code": "NL"}],
+            "cities": {"NL": [{"name": "Amsterdam", "features": ""}]},
         }
         cache = tmp_path / "cache.json"
         cache.write_text(json.dumps(data))
@@ -141,10 +177,10 @@ class TestCachePersistence:
         cache.write_text("not json")
         pvpn = ProtonVPN()
         pvpn.CACHE_FILE = cache
-        pvpn._countries = [{"name": "Brazil", "code": "BR"}]
-        pvpn._cities = {"BR": [{"name": "São Paulo", "features": ""}]}
+        pvpn._countries = [{"name": "Netherlands", "code": "NL"}]
+        pvpn._cities = {"NL": [{"name": "Amsterdam", "features": ""}]}
         pvpn._status_cache = {
-            "server": "BR#1",
+            "server": "NL#1",
             "load": "10%",
             "protocol": "wireguard",
             "ip": None,
@@ -166,6 +202,28 @@ class TestCachePersistence:
 
 
 # ---------------------------------------------------------------------------
+# has_cities
+# ---------------------------------------------------------------------------
+
+
+class TestHasCities:
+    def test_returns_false_when_not_cached(self):
+        pvpn = ProtonVPN()
+        pvpn._cities = {}
+        assert pvpn.has_cities("NL") is False
+
+    def test_returns_true_when_cached(self):
+        pvpn = ProtonVPN()
+        pvpn._cities = {"NL": [{"name": "Amsterdam", "features": ""}]}
+        assert pvpn.has_cities("NL") is True
+
+    def test_uppercases_country_code(self):
+        pvpn = ProtonVPN()
+        pvpn._cities = {"NL": []}
+        assert pvpn.has_cities("nl") is True
+
+
+# ---------------------------------------------------------------------------
 # get_countries / get_cities
 # ---------------------------------------------------------------------------
 
@@ -173,8 +231,8 @@ class TestCachePersistence:
 class TestGetCountries:
     def test_returns_in_memory_countries(self):
         pvpn = ProtonVPN()
-        pvpn._countries = [{"name": "Brazil", "code": "BR"}]
-        assert pvpn.get_countries() == [{"name": "Brazil", "code": "BR"}]
+        pvpn._countries = [{"name": "Netherlands", "code": "NL"}]
+        assert pvpn.get_countries() == [{"name": "Netherlands", "code": "NL"}]
 
     def test_returns_empty_when_no_cache(self):
         pvpn = _pvpn_no_cache()
@@ -215,6 +273,14 @@ class TestGetCities:
         with patch("subprocess.run", side_effect=FileNotFoundError):
             assert pvpn.fetch_cities("XX") == []
 
+    def test_skips_blank_lines_in_output(self):
+        pvpn = _pvpn_no_cache()
+        with patch("subprocess.run", return_value=_make_result(CITIES_NL_OUTPUT)):
+            cities = pvpn.fetch_cities("NL")
+        names = [c["name"] for c in cities]
+        assert "Amsterdam" in names
+        assert "Rotterdam" in names
+
 
 # ---------------------------------------------------------------------------
 # refresh_cache
@@ -222,6 +288,15 @@ class TestGetCities:
 
 
 class TestRefreshCache:
+    def test_returns_false_when_no_valid_countries_parsed(self, tmp_path):
+        pvpn = _pvpn_no_cache()
+        pvpn.CACHE_FILE = tmp_path / "cache.json"
+        with patch(
+            "subprocess.run", return_value=_make_result("No servers available.\n")
+        ):
+            result = pvpn.refresh_cache()
+        assert result is False
+
     def test_parses_and_saves_countries(self, tmp_path):
         pvpn = _pvpn_no_cache()
         pvpn.CACHE_FILE = tmp_path / "cache.json"
@@ -229,7 +304,7 @@ class TestRefreshCache:
             result = pvpn.refresh_cache()
         assert result is True
         codes = [c["code"] for c in pvpn._countries]
-        assert "BR" in codes
+        assert "NL" in codes
         assert "US" in codes
 
     def test_persists_to_disk(self, tmp_path):
@@ -274,9 +349,17 @@ class TestRefreshCache:
 
 
 class TestClearCache:
+    def test_handles_os_error_on_unlink(self):
+        pvpn = ProtonVPN()
+        pvpn.CACHE_FILE = MagicMock()
+        pvpn.CACHE_FILE.unlink.side_effect = OSError("permission denied")
+        pvpn.clear_cache()  # must not raise
+        assert pvpn._countries == []
+        assert pvpn._cities == {}
+
     def test_clears_in_memory_data(self):
         pvpn = ProtonVPN()
-        pvpn._countries = [{"name": "Brazil", "code": "BR"}]
+        pvpn._countries = [{"name": "Netherlands", "code": "NL"}]
         pvpn._cities = {"US": [{"name": "New York", "features": "P2P"}]}
         pvpn.clear_cache()
         assert pvpn._countries == []
@@ -297,6 +380,17 @@ class TestClearCache:
 
 
 class TestConnect:
+    def test_connect_output_without_connected_message(self):
+        pvpn = ProtonVPN()
+        with patch(
+            "subprocess.run", return_value=_make_result("Error: not authorised\n")
+        ):
+            success, ip = pvpn.connect()
+        assert success is False
+        assert ip is None
+        assert pvpn._status_cache is None
+        assert pvpn._status_cache_empty is True
+
     def test_connect_fastest(self):
         pvpn = ProtonVPN()
         with patch(
@@ -318,11 +412,11 @@ class TestConnect:
             "subprocess.run",
             return_value=_make_result(CONNECT_OUTPUT),
         ) as mock_run:
-            success, ip = pvpn.connect(country_code="BR")
+            success, ip = pvpn.connect(country_code="NL")
 
         args = mock_run.call_args[0][0]
         assert "--country" in args
-        assert "BR" in args
+        assert "NL" in args
         assert success is True
 
     def test_connect_by_country_and_city(self):
@@ -358,7 +452,7 @@ class TestConnect:
         pvpn = ProtonVPN()
         pvpn._status_ts = time.monotonic()
         pvpn._status_cache = {
-            "server": "BR#1",
+            "server": "NL#1",
             "load": "10%",
             "protocol": "wireguard",
             "ip": None,
@@ -368,7 +462,7 @@ class TestConnect:
             pvpn.connect()
         assert pvpn._status_ts == 0.0
         assert pvpn._status_cache_empty is False
-        assert pvpn._status_cache["server"] == "BR#116 in São Paulo, Brazil"
+        assert pvpn._status_cache["server"] == "NL#42 in Amsterdam, Netherlands"
         assert pvpn._status_cache["ip"] == "146.70.98.133"
 
 
@@ -392,7 +486,7 @@ class TestDisconnect:
         pvpn = ProtonVPN()
         pvpn._status_ts = time.monotonic()
         pvpn._status_cache = {
-            "server": "BR#1",
+            "server": "NL#1",
             "load": "10%",
             "protocol": "wireguard",
             "ip": None,
@@ -414,7 +508,7 @@ class TestGetStatus:
     def test_returns_cached_value_without_calling_cli(self):
         pvpn = ProtonVPN()
         pvpn._status_cache = {
-            "server": "BR#1",
+            "server": "NL#1",
             "load": "10%",
             "protocol": "wireguard",
             "ip": None,
@@ -425,7 +519,7 @@ class TestGetStatus:
             status = pvpn.get_status()
         mock_run.assert_not_called()
         assert status is not None
-        assert status["server"] == "BR#1"
+        assert status["server"] == "NL#1"
 
     def test_returns_none_when_cache_empty(self):
         pvpn = ProtonVPN()
@@ -457,6 +551,18 @@ class TestGetStatus:
 
 
 class TestRefreshStatus:
+    def test_sets_cache_empty_when_no_server_parsed(self):
+        pvpn = ProtonVPN()
+        pvpn._status_refreshing = True
+        with patch(
+            "subprocess.run",
+            return_value=_make_result("Status: Connected\nLoad: 10%\n"),
+        ):
+            pvpn._refresh_status()
+        assert pvpn._status_cache is None
+        assert pvpn._status_cache_empty is True
+        assert pvpn._status_refreshing is False
+
     def test_populates_cache_when_connected(self):
         pvpn = ProtonVPN()
         pvpn._status_refreshing = True
@@ -464,7 +570,7 @@ class TestRefreshStatus:
             pvpn._refresh_status()
         assert pvpn._status_cache_empty is False
         assert pvpn._status_cache is not None
-        assert pvpn._status_cache["server"] == "BR#116 in São Paulo, Brazil"
+        assert pvpn._status_cache["server"] == "NL#42 in Amsterdam, Netherlands"
         assert pvpn._status_refreshing is False
 
     def test_clears_cache_when_disconnected(self):
@@ -483,3 +589,27 @@ class TestRefreshStatus:
         with patch("subprocess.run", side_effect=FileNotFoundError):
             pvpn._refresh_status()
         assert pvpn._status_refreshing is False
+
+
+# ---------------------------------------------------------------------------
+# _run
+# ---------------------------------------------------------------------------
+
+
+class TestRun:
+    def test_returns_none_on_nonzero_exit_code(self):
+        pvpn = ProtonVPN()
+        with patch(
+            "subprocess.run", return_value=_make_result("error output", returncode=1)
+        ):
+            result = pvpn._run(["status"])
+        assert result is None
+
+    def test_returns_none_on_timeout(self):
+        pvpn = ProtonVPN()
+        with patch(
+            "subprocess.run",
+            side_effect=subprocess.TimeoutExpired(cmd="protonvpn", timeout=30),
+        ):
+            result = pvpn._run(["status"])
+        assert result is None

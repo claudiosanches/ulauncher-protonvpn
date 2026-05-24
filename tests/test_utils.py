@@ -2,6 +2,7 @@
 
 import os
 import pathlib
+from unittest.mock import patch
 
 from src.utils import Utils
 
@@ -29,6 +30,14 @@ def test_flag_path_fallback_for_unknown_code():
 
 
 def test_flag_path_lowercases_code():
-    path_upper = Utils.flag_path("BR")
-    path_lower = Utils.flag_path("br")
+    path_upper = Utils.flag_path("NL")
+    path_lower = Utils.flag_path("nl")
     assert path_upper == path_lower
+
+
+def test_notify_calls_notify_api():
+    with patch("src.utils.Notify") as mock_notify:
+        Utils.notify("Test Title", "Test message")
+    mock_notify.init.assert_called_once_with("ProtonVPN")
+    mock_notify.Notification.new.assert_called_once()
+    mock_notify.Notification.new.return_value.show.assert_called_once()

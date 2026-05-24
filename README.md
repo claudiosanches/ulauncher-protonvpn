@@ -85,10 +85,9 @@ Restart Ulauncher.
 ### Examples
 
 ```
-pvpn              → show status / quick connect
-pvpn us           → list US cities, connect to fastest or pick a city
-pvpn ger          → find Germany, drill into cities
-pvpn br           → find Brazil, connect to fastest or São Paulo, etc.
+pvpn      → show status / quick connect
+pvpn us   → list US cities, connect to fastest or pick a city
+pvpn ger  → find Germany, drill into cities
 ```
 
 ---

@@ -51,8 +51,10 @@ stubPath = "typings"
 ci = [
     "pyright",
     "pytest",
+    "pytest-cov",
     "ruff",
 ]
 test = [
     "pytest",
+    "pytest-cov",
 ]

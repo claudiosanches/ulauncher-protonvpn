@@ -1,13 +1,22 @@
 """Tests for src/listeners.py — KeywordQueryEventListener routing."""
 
+import threading
 from unittest.mock import MagicMock, patch
 
 from src.listeners import (
+    ACT_CONNECT_CITY,
+    ACT_CONNECT_COUNTRY,
     ACT_CONNECT_FASTEST,
+    ACT_DISCONNECT,
+    ACT_REFRESH,
     ACT_SHOW_CITIES,
     ACT_SHOW_CONNECT,
     ItemEnterEventListener,
     KeywordQueryEventListener,
+    PreferencesEventListener,
+    PreferencesUpdateEventListener,
+    _refresh_status_soon,
+    _run_in_background,
 )
 
 
@@ -18,7 +27,7 @@ from src.listeners import (
 COUNTRIES = [
     {"name": "United States", "code": "US"},
     {"name": "Germany", "code": "DE"},
-    {"name": "Brazil", "code": "BR"},
+    {"name": "Netherlands", "code": "NL"},
 ]
 
 CITIES_US = [
@@ -71,7 +80,7 @@ class TestHomeScreen:
 
     def test_connected_home_shows_server_and_disconnect(self):
         status = {
-            "server": "BR#116",
+            "server": "NL#42",
             "load": "29%",
             "protocol": "wireguard",
             "ip": None,
@@ -101,7 +110,7 @@ class TestHomeScreen:
 
     def test_connected_home_hides_none_status_fields(self):
         status = {
-            "server": "BR#116",
+            "server": "NL#42",
             "load": None,
             "protocol": None,
             "ip": None,
@@ -197,6 +206,19 @@ class TestCityScreen:
         names = _item_names(result)
         assert any("No cities" in n for n in names)
 
+    def test_city_screen_shows_loading_when_cities_not_cached(self):
+        ext, _ = _make_extension()
+        ext.pvpn.has_cities.return_value = False
+        listener = ItemEnterEventListener()
+        event = self._enter_event(
+            {"action": ACT_SHOW_CITIES, "code": "NL", "name": "Netherlands"}, ext
+        )
+        with patch("src.listeners.Utils"), patch("src.listeners._run_in_background"):
+            result = listener.on_event(event, ext)
+        names = _item_names(result)
+        assert any("Fastest" in n for n in names)
+        assert any("Loading" in n for n in names)
+
     def test_show_connect_renders_full_country_list(self):
         ext, _ = _make_extension()
         listener = ItemEnterEventListener()
@@ -237,3 +259,281 @@ class TestConnectActions:
         ext.pvpn.connect.assert_called_once_with()
         mock_refresh_status.assert_called_once_with(ext.pvpn)
         ext.pvpn.get_status.assert_not_called()
+
+    def test_connect_fastest_success_without_ip(self):
+        ext, _ = _make_extension()
+        ext.pvpn.connect.return_value = (True, None)
+        listener = ItemEnterEventListener()
+        event = self._enter_event({"action": ACT_CONNECT_FASTEST})
+
+        with (
+            patch("src.listeners.Utils") as mock_utils,
+            patch(
+                "src.listeners._run_in_background", side_effect=lambda target: target()
+            ),
+            patch("src.listeners._refresh_status_soon"),
+        ):
+            listener.on_event(event, ext)
+
+        calls = [str(c) for c in mock_utils.notify.call_args_list]
+        assert any("Connected." in c for c in calls)
+
+    def test_connect_fastest_failure(self):
+        ext, _ = _make_extension()
+        ext.pvpn.connect.return_value = (False, None)
+        listener = ItemEnterEventListener()
+        event = self._enter_event({"action": ACT_CONNECT_FASTEST})
+
+        with (
+            patch("src.listeners.Utils") as mock_utils,
+            patch(
+                "src.listeners._run_in_background", side_effect=lambda target: target()
+            ),
+            patch("src.listeners._refresh_status_soon") as mock_refresh,
+        ):
+            listener.on_event(event, ext)
+
+        calls = [str(c) for c in mock_utils.notify.call_args_list]
+        assert any("failed" in c for c in calls)
+        mock_refresh.assert_not_called()
+
+    def test_connect_country_success(self):
+        ext, _ = _make_extension()
+        ext.pvpn.connect.return_value = (True, "1.2.3.4")
+        listener = ItemEnterEventListener()
+        event = self._enter_event({"action": ACT_CONNECT_COUNTRY, "code": "NL"})
+
+        with (
+            patch("src.listeners.Utils"),
+            patch(
+                "src.listeners._run_in_background", side_effect=lambda target: target()
+            ),
+            patch("src.listeners._refresh_status_soon") as mock_refresh,
+        ):
+            listener.on_event(event, ext)
+
+        ext.pvpn.connect.assert_called_once_with(country_code="NL")
+        mock_refresh.assert_called_once_with(ext.pvpn)
+
+    def test_connect_country_failure(self):
+        ext, _ = _make_extension()
+        ext.pvpn.connect.return_value = (False, None)
+        listener = ItemEnterEventListener()
+        event = self._enter_event({"action": ACT_CONNECT_COUNTRY, "code": "NL"})
+
+        with (
+            patch("src.listeners.Utils") as mock_utils,
+            patch(
+                "src.listeners._run_in_background", side_effect=lambda target: target()
+            ),
+            patch("src.listeners._refresh_status_soon") as mock_refresh,
+        ):
+            listener.on_event(event, ext)
+
+        calls = [str(c) for c in mock_utils.notify.call_args_list]
+        assert any("failed" in c for c in calls)
+        mock_refresh.assert_not_called()
+
+    def test_connect_city_success(self):
+        ext, _ = _make_extension()
+        ext.pvpn.connect.return_value = (True, "1.2.3.4")
+        listener = ItemEnterEventListener()
+        event = self._enter_event(
+            {"action": ACT_CONNECT_CITY, "code": "NL", "city": "Amsterdam"}
+        )
+
+        with (
+            patch("src.listeners.Utils"),
+            patch(
+                "src.listeners._run_in_background", side_effect=lambda target: target()
+            ),
+            patch("src.listeners._refresh_status_soon") as mock_refresh,
+        ):
+            listener.on_event(event, ext)
+
+        ext.pvpn.connect.assert_called_once_with(country_code="NL", city="Amsterdam")
+        mock_refresh.assert_called_once_with(ext.pvpn)
+
+    def test_connect_city_failure(self):
+        ext, _ = _make_extension()
+        ext.pvpn.connect.return_value = (False, None)
+        listener = ItemEnterEventListener()
+        event = self._enter_event(
+            {"action": ACT_CONNECT_CITY, "code": "NL", "city": "Amsterdam"}
+        )
+
+        with (
+            patch("src.listeners.Utils") as mock_utils,
+            patch(
+                "src.listeners._run_in_background", side_effect=lambda target: target()
+            ),
+            patch("src.listeners._refresh_status_soon") as mock_refresh,
+        ):
+            listener.on_event(event, ext)
+
+        calls = [str(c) for c in mock_utils.notify.call_args_list]
+        assert any("failed" in c for c in calls)
+        mock_refresh.assert_not_called()
+
+    def test_disconnect_success(self):
+        ext, _ = _make_extension()
+        ext.pvpn.disconnect.return_value = True
+        listener = ItemEnterEventListener()
+        event = self._enter_event({"action": ACT_DISCONNECT})
+
+        with (
+            patch("src.listeners.Utils") as mock_utils,
+            patch(
+                "src.listeners._run_in_background", side_effect=lambda target: target()
+            ),
+        ):
+            listener.on_event(event, ext)
+
+        calls = [str(c) for c in mock_utils.notify.call_args_list]
+        assert any("Disconnected." in c for c in calls)
+
+    def test_disconnect_failure(self):
+        ext, _ = _make_extension()
+        ext.pvpn.disconnect.return_value = False
+        listener = ItemEnterEventListener()
+        event = self._enter_event({"action": ACT_DISCONNECT})
+
+        with (
+            patch("src.listeners.Utils") as mock_utils,
+            patch(
+                "src.listeners._run_in_background", side_effect=lambda target: target()
+            ),
+        ):
+            listener.on_event(event, ext)
+
+        calls = [str(c) for c in mock_utils.notify.call_args_list]
+        assert any("failed" in c for c in calls)
+
+    def test_refresh_success(self):
+        ext, _ = _make_extension()
+        ext.pvpn.refresh_cache.return_value = True
+        ext.pvpn.get_countries.return_value = [{"name": "Netherlands", "code": "NL"}]
+        listener = ItemEnterEventListener()
+        event = self._enter_event({"action": ACT_REFRESH})
+
+        with (
+            patch("src.listeners.Utils") as mock_utils,
+            patch(
+                "src.listeners._run_in_background", side_effect=lambda target: target()
+            ),
+        ):
+            listener.on_event(event, ext)
+
+        calls = [str(c) for c in mock_utils.notify.call_args_list]
+        assert any("countries available" in c for c in calls)
+
+    def test_refresh_failure(self):
+        ext, _ = _make_extension()
+        ext.pvpn.refresh_cache.return_value = False
+        listener = ItemEnterEventListener()
+        event = self._enter_event({"action": ACT_REFRESH})
+
+        with (
+            patch("src.listeners.Utils") as mock_utils,
+            patch(
+                "src.listeners._run_in_background", side_effect=lambda target: target()
+            ),
+        ):
+            listener.on_event(event, ext)
+
+        calls = [str(c) for c in mock_utils.notify.call_args_list]
+        assert any("Refresh failed" in c for c in calls)
+
+    def test_unknown_action_returns_hide(self):
+        ext, _ = _make_extension()
+        listener = ItemEnterEventListener()
+        event = self._enter_event({"action": "UNKNOWN_ACTION"})
+
+        with patch("src.listeners.Utils"):
+            result = listener.on_event(event, ext)
+
+        from ulauncher.api.shared.action.HideWindowAction import HideWindowAction
+
+        assert isinstance(result, HideWindowAction)
+
+
+# ---------------------------------------------------------------------------
+# Helper functions
+# ---------------------------------------------------------------------------
+
+
+class TestHelperFunctions:
+    def test_run_in_background_executes_target(self):
+        done = threading.Event()
+        _run_in_background(lambda: done.set())
+        assert done.wait(timeout=2.0)
+
+    def test_refresh_status_soon_schedules_delayed_call(self):
+        pvpn = MagicMock()
+        with patch("threading.Timer") as mock_timer:
+            mock_timer.return_value = MagicMock()
+            _refresh_status_soon(pvpn, delay=2.0)
+        mock_timer.assert_called_once_with(2.0, pvpn.get_status)
+        mock_timer.return_value.start.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# Preferences listeners
+# ---------------------------------------------------------------------------
+
+
+class TestPreferencesEventListener:
+    def _make_event(self, kw="pvpn", max_entry="10"):
+        event = MagicMock()
+        event.preferences.get.side_effect = lambda key, default: {
+            "pvpn_kw": kw,
+            "pvpn_max_entry": max_entry,
+        }.get(key, default)
+        return event
+
+    def test_sets_keyword_and_max_entries(self):
+        ext = MagicMock()
+        listener = PreferencesEventListener()
+        listener.on_event(self._make_event(kw="vpn", max_entry="5"), ext)
+        assert ext.keyword == "vpn"
+        assert ext.max_entries == 5
+
+    def test_defaults_max_entries_on_invalid_value(self):
+        ext = MagicMock()
+        listener = PreferencesEventListener()
+        listener.on_event(self._make_event(max_entry="bad"), ext)
+        assert ext.max_entries == 10
+
+
+class TestPreferencesUpdateEventListener:
+    def _make_event(self, event_id, new_value):
+        event = MagicMock()
+        event.id = event_id
+        event.new_value = new_value
+        return event
+
+    def test_updates_keyword(self):
+        ext = MagicMock()
+        listener = PreferencesUpdateEventListener()
+        listener.on_event(self._make_event("pvpn_kw", "vpn"), ext)
+        assert ext.keyword == "vpn"
+
+    def test_updates_max_entries(self):
+        ext = MagicMock()
+        listener = PreferencesUpdateEventListener()
+        listener.on_event(self._make_event("pvpn_max_entry", "15"), ext)
+        assert ext.max_entries == 15
+
+    def test_ignores_invalid_max_entries(self):
+        ext = MagicMock()
+        ext.max_entries = 10
+        listener = PreferencesUpdateEventListener()
+        listener.on_event(self._make_event("pvpn_max_entry", "not_a_number"), ext)
+        assert ext.max_entries == 10
+
+    def test_ignores_unknown_preference_id(self):
+        ext = MagicMock()
+        listener = PreferencesUpdateEventListener()
+        listener.on_event(self._make_event("unknown_pref", "whatever"), ext)
+        # No crash and no attribute set
+        ext.keyword = getattr(ext, "keyword", None)
