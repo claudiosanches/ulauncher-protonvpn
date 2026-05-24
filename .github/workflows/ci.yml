@@ -9,6 +9,9 @@ on:
       - main
     types: [opened, synchronize, reopened]
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
   lint:
     name: Lint
@@ -77,9 +80,9 @@ jobs:
           cache-dependency-path: pyproject.toml
           pip-install: --group ci
 
-      - name: Install dependencies
+      - name: Install pytest-cov
         run: |
-          pip install --group ci
+          pip install pytest-cov
 
       - name: Run pytest
         run: |
@@ -90,6 +93,7 @@ jobs:
         with:
           name: coverage-data
           path: .coverage
+          if-no-files-found: error
 
   coverage:
     name: Coverage
@@ -109,9 +113,9 @@ jobs:
           cache-dependency-path: pyproject.toml
           pip-install: --group ci
 
-      - name: Install dependencies
+      - name: Install coverage
         run: |
-          pip install --group ci
+          pip install coverage
 
       - name: Download coverage data
         uses: actions/download-artifact@v4.3.0
