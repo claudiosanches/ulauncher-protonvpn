@@ -1,10 +1,8 @@
 """Tests for src/protonvpn.py"""
 
 import json
-import pathlib
-from unittest.mock import MagicMock, patch, mock_open
-
-import pytest
+import time
+from unittest.mock import MagicMock, patch
 
 from src.protonvpn import ProtonVPN
 
@@ -69,6 +67,7 @@ def _pvpn_no_cache():
 # is_installed
 # ---------------------------------------------------------------------------
 
+
 class TestIsInstalled:
     def test_returns_true_when_binary_found(self):
         with patch("shutil.which", return_value="/usr/bin/protonvpn"):
@@ -82,6 +81,7 @@ class TestIsInstalled:
 # ---------------------------------------------------------------------------
 # has_cache / _load_cache / _save_cache
 # ---------------------------------------------------------------------------
+
 
 class TestCachePersistence:
     def test_has_cache_false_when_no_countries_loaded(self):
@@ -128,6 +128,26 @@ class TestCachePersistence:
         pvpn._load_cache()
         assert pvpn._countries == []
 
+    def test_load_cache_clears_state_after_corrupt_file(self, tmp_path):
+        cache = tmp_path / "cache.json"
+        cache.write_text("not json")
+        pvpn = ProtonVPN()
+        pvpn.CACHE_FILE = cache
+        pvpn._countries = [{"name": "Brazil", "code": "BR"}]
+        pvpn._cities = {"BR": [{"name": "São Paulo", "features": ""}]}
+        pvpn._status_cache = {
+            "server": "BR#1",
+            "load": "10%",
+            "protocol": "wireguard",
+            "ip": None,
+        }
+        pvpn._status_cache_empty = False
+        pvpn._load_cache()
+        assert pvpn._countries == []
+        assert pvpn._cities == {}
+        assert pvpn._status_cache is None
+        assert pvpn._status_cache_empty is True
+
     def test_save_cache_writes_json(self, tmp_path):
         pvpn = ProtonVPN()
         pvpn.CACHE_FILE = tmp_path / "cache.json"
@@ -140,6 +160,7 @@ class TestCachePersistence:
 # ---------------------------------------------------------------------------
 # get_countries / get_cities
 # ---------------------------------------------------------------------------
+
 
 class TestGetCountries:
     def test_returns_in_memory_countries(self):
@@ -173,7 +194,10 @@ class TestGetCities:
 
     def test_caches_result_in_memory(self):
         pvpn = _pvpn_no_cache()
-        with patch("subprocess.run", return_value=_make_result(CITIES_US_OUTPUT)) as mock_run:
+        with patch(
+            "subprocess.run",
+            return_value=_make_result(CITIES_US_OUTPUT),
+        ) as mock_run:
             pvpn.fetch_cities("US")
             pvpn.get_cities("US")  # second call — cache-only, no CLI
         assert mock_run.call_count == 1
@@ -187,6 +211,7 @@ class TestGetCities:
 # ---------------------------------------------------------------------------
 # refresh_cache
 # ---------------------------------------------------------------------------
+
 
 class TestRefreshCache:
     def test_parses_and_saves_countries(self, tmp_path):
@@ -226,7 +251,10 @@ class TestRefreshCache:
     def test_does_not_call_cities(self, tmp_path):
         pvpn = _pvpn_no_cache()
         pvpn.CACHE_FILE = tmp_path / "cache.json"
-        with patch("subprocess.run", return_value=_make_result(COUNTRIES_OUTPUT)) as mock_run:
+        with patch(
+            "subprocess.run",
+            return_value=_make_result(COUNTRIES_OUTPUT),
+        ) as mock_run:
             pvpn.refresh_cache()
         # Only one subprocess call — countries list only
         assert mock_run.call_count == 1
@@ -235,6 +263,7 @@ class TestRefreshCache:
 # ---------------------------------------------------------------------------
 # clear_cache
 # ---------------------------------------------------------------------------
+
 
 class TestClearCache:
     def test_clears_in_memory_data(self):
@@ -258,10 +287,14 @@ class TestClearCache:
 # connect
 # ---------------------------------------------------------------------------
 
+
 class TestConnect:
     def test_connect_fastest(self):
         pvpn = ProtonVPN()
-        with patch("subprocess.run", return_value=_make_result(CONNECT_OUTPUT)) as mock_run:
+        with patch(
+            "subprocess.run",
+            return_value=_make_result(CONNECT_OUTPUT),
+        ) as mock_run:
             success, ip = pvpn.connect()
 
         mock_run.assert_called_once()
@@ -273,7 +306,10 @@ class TestConnect:
 
     def test_connect_by_country(self):
         pvpn = ProtonVPN()
-        with patch("subprocess.run", return_value=_make_result(CONNECT_OUTPUT)) as mock_run:
+        with patch(
+            "subprocess.run",
+            return_value=_make_result(CONNECT_OUTPUT),
+        ) as mock_run:
             success, ip = pvpn.connect(country_code="BR")
 
         args = mock_run.call_args[0][0]
@@ -283,7 +319,10 @@ class TestConnect:
 
     def test_connect_by_country_and_city(self):
         pvpn = ProtonVPN()
-        with patch("subprocess.run", return_value=_make_result(CONNECT_OUTPUT)) as mock_run:
+        with patch(
+            "subprocess.run",
+            return_value=_make_result(CONNECT_OUTPUT),
+        ) as mock_run:
             pvpn.connect(country_code="US", city="New York")
 
         args = mock_run.call_args[0][0]
@@ -309,9 +348,13 @@ class TestConnect:
 
     def test_updates_status_cache_on_connect(self):
         pvpn = ProtonVPN()
-        import time
         pvpn._status_ts = time.monotonic()
-        pvpn._status_cache = {"server": "BR#1", "load": "10%", "protocol": "wireguard", "ip": None}
+        pvpn._status_cache = {
+            "server": "BR#1",
+            "load": "10%",
+            "protocol": "wireguard",
+            "ip": None,
+        }
         pvpn._status_cache_empty = False
         with patch("subprocess.run", return_value=_make_result(CONNECT_OUTPUT)):
             pvpn.connect()
@@ -324,6 +367,7 @@ class TestConnect:
 # ---------------------------------------------------------------------------
 # disconnect
 # ---------------------------------------------------------------------------
+
 
 class TestDisconnect:
     def test_returns_true_on_success(self):
@@ -338,9 +382,13 @@ class TestDisconnect:
 
     def test_invalidates_status_cache(self):
         pvpn = ProtonVPN()
-        import time
         pvpn._status_ts = time.monotonic()
-        pvpn._status_cache = {"server": "BR#1", "load": "10%", "protocol": "wireguard", "ip": None}
+        pvpn._status_cache = {
+            "server": "BR#1",
+            "load": "10%",
+            "protocol": "wireguard",
+            "ip": None,
+        }
         pvpn._status_cache_empty = False
         with patch("subprocess.run", return_value=_make_result(DISCONNECT_OUTPUT)):
             pvpn.disconnect()
@@ -353,20 +401,25 @@ class TestDisconnect:
 # get_status (returns cached value immediately)
 # ---------------------------------------------------------------------------
 
+
 class TestGetStatus:
     def test_returns_cached_value_without_calling_cli(self):
-        import time
         pvpn = ProtonVPN()
-        pvpn._status_cache = {"server": "BR#1", "load": "10%", "protocol": "wireguard", "ip": None}
+        pvpn._status_cache = {
+            "server": "BR#1",
+            "load": "10%",
+            "protocol": "wireguard",
+            "ip": None,
+        }
         pvpn._status_cache_empty = False
         pvpn._status_ts = time.monotonic()  # just refreshed — cache is fresh
         with patch("subprocess.run") as mock_run:
             status = pvpn.get_status()
         mock_run.assert_not_called()
+        assert status is not None
         assert status["server"] == "BR#1"
 
     def test_returns_none_when_cache_empty(self):
-        import time
         pvpn = ProtonVPN()
         pvpn._status_cache_empty = True
         pvpn._status_ts = time.monotonic()  # fresh, so no background refresh
@@ -394,6 +447,7 @@ class TestGetStatus:
 # _refresh_status
 # ---------------------------------------------------------------------------
 
+
 class TestRefreshStatus:
     def test_populates_cache_when_connected(self):
         pvpn = ProtonVPN()
@@ -401,6 +455,7 @@ class TestRefreshStatus:
         with patch("subprocess.run", return_value=_make_result(STATUS_CONNECTED)):
             pvpn._refresh_status()
         assert pvpn._status_cache_empty is False
+        assert pvpn._status_cache is not None
         assert pvpn._status_cache["server"] == "BR#116 in São Paulo, Brazil"
         assert pvpn._status_refreshing is False
 

@@ -58,7 +58,7 @@ class ProtonVPN:
     # ------------------------------------------------------------------
 
     def has_cache(self) -> bool:
-        """Return True if the in-memory country list is populated (loaded from a valid cache file)."""
+        """Return True when the in-memory country list has entries."""
         return len(self._countries) > 0
 
     def get_countries(self) -> list[dict]:
@@ -144,7 +144,11 @@ class ProtonVPN:
         countries = []
         for line in result.splitlines():
             stripped = line.strip()
-            if not stripped or stripped.startswith("Country") or stripped.startswith("---"):
+            if (
+                not stripped
+                or stripped.startswith("Country")
+                or stripped.startswith("---")
+            ):
                 continue
             parts = stripped.rsplit(None, 1)
             if len(parts) == 2 and re.fullmatch(r"[A-Z]{2}", parts[1]):
@@ -173,7 +177,13 @@ class ProtonVPN:
     # ------------------------------------------------------------------
 
     def _load_cache(self) -> None:
-        """Load countries, cities, and last known status from the cache file."""
+        """
+        Load countries, cities, and last known status from the cache file.
+
+        Invalid or missing cache files are treated as empty cache state.  The
+        cache is only an optimization, so read failures should never prevent
+        the extension from opening.
+        """
         try:
             data = json.loads(self.CACHE_FILE.read_text())
             self._countries = data.get("countries", [])
@@ -188,17 +198,27 @@ class ProtonVPN:
                 # main.py with _status_refreshing = True) will refresh it.
         except (OSError, json.JSONDecodeError):
             self._countries = []
+            self._cities = {}
+            self._status_cache = None
+            self._status_cache_empty = True
 
     def _save_cache(self) -> None:
-        """Persist countries, cities, and last known status to the cache file."""
+        """
+        Persist cache data to disk.
+
+        Cache writes are best effort: the extension should continue to work
+        even when the cache directory cannot be created or written.
+        """
         try:
             self.CACHE_FILE.parent.mkdir(parents=True, exist_ok=True)
             self.CACHE_FILE.write_text(
-                json.dumps({
-                    "countries": self._countries,
-                    "cities": self._cities,
-                    "status": self._status_cache,
-                })
+                json.dumps(
+                    {
+                        "countries": self._countries,
+                        "cities": self._cities,
+                        "status": self._status_cache,
+                    }
+                )
             )
         except OSError:
             pass
@@ -273,8 +293,8 @@ class ProtonVPN:
         output = self._run(["disconnect"])
         if output is None:
             return False
-        self._status_ts = 0.0        # force background refresh on next query
-        self._status_cache = None    # don't serve stale connected state
+        self._status_ts = 0.0  # force background refresh on next query
+        self._status_cache = None  # don't serve stale connected state
         self._status_cache_empty = True
         self._save_cache()
         return "Disconnected" in output
@@ -320,7 +340,12 @@ class ProtonVPN:
                 self._save_cache()
                 return
 
-            status: dict = {"server": None, "load": None, "protocol": None, "ip": self._last_ip}
+            status: dict = {
+                "server": None,
+                "load": None,
+                "protocol": None,
+                "ip": self._last_ip,
+            }
             for line in output.splitlines():
                 line = line.strip()
                 if line.startswith("Server:"):

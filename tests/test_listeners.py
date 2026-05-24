@@ -2,7 +2,12 @@
 
 from unittest.mock import MagicMock, patch
 
-from src.listeners import KeywordQueryEventListener, ItemEnterEventListener, ACT_SHOW_CITIES, ACT_SHOW_CONNECT
+from src.listeners import (
+    ACT_SHOW_CITIES,
+    ACT_SHOW_CONNECT,
+    ItemEnterEventListener,
+    KeywordQueryEventListener,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -47,8 +52,8 @@ def _item_names(result):
 # Home screen
 # ---------------------------------------------------------------------------
 
-class TestHomeScreen:
 
+class TestHomeScreen:
     def test_empty_query_shows_home_disconnected(self):
         ext, event = _make_extension(query="")
         listener = KeywordQueryEventListener()
@@ -60,7 +65,12 @@ class TestHomeScreen:
         assert any("refresh" in n.lower() or "Fetch" in n for n in names)
 
     def test_connected_home_shows_server_and_disconnect(self):
-        status = {"server": "BR#116", "load": "29%", "protocol": "wireguard", "ip": None}
+        status = {
+            "server": "BR#116",
+            "load": "29%",
+            "protocol": "wireguard",
+            "ip": None,
+        }
         ext, event = _make_extension(query="", status=status)
         listener = KeywordQueryEventListener()
         with patch("src.listeners.Utils"):
@@ -70,7 +80,12 @@ class TestHomeScreen:
         assert any("Disconnect" in n for n in names)
 
     def test_connected_home_no_connect_items(self):
-        status = {"server": "DE#5", "load": "10%", "protocol": "openvpn", "ip": "1.2.3.4"}
+        status = {
+            "server": "DE#5",
+            "load": "10%",
+            "protocol": "openvpn",
+            "ip": "1.2.3.4",
+        }
         ext, event = _make_extension(query="", status=status)
         listener = KeywordQueryEventListener()
         with patch("src.listeners.Utils"):
@@ -92,8 +107,8 @@ class TestHomeScreen:
 # Connect screen (typed query filters countries)
 # ---------------------------------------------------------------------------
 
-class TestConnectScreen:
 
+class TestConnectScreen:
     def test_typed_query_filters_countries(self):
         ext, event = _make_extension(query="ger")
         listener = KeywordQueryEventListener()
@@ -124,8 +139,8 @@ class TestConnectScreen:
 # City screen (via ItemEnterEventListener ACT_SHOW_CITIES)
 # ---------------------------------------------------------------------------
 
-class TestCityScreen:
 
+class TestCityScreen:
     def _enter_event(self, data, ext):
         event = MagicMock()
         event.get_data.return_value = data

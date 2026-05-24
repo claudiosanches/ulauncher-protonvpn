@@ -2,7 +2,6 @@
 
 import os
 import pathlib
-from unittest.mock import patch
 
 from src.utils import Utils
 

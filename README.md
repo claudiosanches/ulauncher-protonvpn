@@ -57,26 +57,26 @@ Restart Ulauncher.
 
 ## Settings
 
-| Setting | Description | Default |
-|---|---|---|
-| **Keyword** | Trigger keyword in Ulauncher | `pvpn` |
-| **Max results** | Maximum number of countries/cities shown | `10` |
+| Setting         | Description                              | Default |
+| --------------- | ---------------------------------------- | ------- |
+| **Keyword**     | Trigger keyword in Ulauncher             | `pvpn`  |
+| **Max results** | Maximum number of countries/cities shown | `10`    |
 
 ---
 
 ## Usage
 
-| Input | Action |
-|---|---|
-| `pvpn` | Show current connection status and quick actions |
-| `pvpn <query>` | Filter and browse countries (e.g. `pvpn us`, `pvpn ger`) |
-| Select a country | Drill into the city list for that country |
-| Select a city | Connect to that specific city |
-| Select **Fastest server in XX** | Connect to the fastest server in the country |
-| Select **Connect to fastest server** | Connect to the globally fastest server |
-| Select **Connect to a country** | Browse the list of available countries |
-| Select **Disconnect** | Disconnect from ProtonVPN |
-| Select **Refresh server list** | Re-fetch available countries from the CLI |
+| Input                                | Action                                                   |
+| ------------------------------------ | -------------------------------------------------------- |
+| `pvpn`                               | Show current connection status and quick actions         |
+| `pvpn <query>`                       | Filter and browse countries (e.g. `pvpn us`, `pvpn ger`) |
+| Select a country                     | Drill into the city list for that country                |
+| Select a city                        | Connect to that specific city                            |
+| Select **Fastest server in XX**      | Connect to the fastest server in the country             |
+| Select **Connect to fastest server** | Connect to the globally fastest server                   |
+| Select **Connect to a country**      | Browse the list of available countries                   |
+| Select **Disconnect**                | Disconnect from ProtonVPN                                |
+| Select **Refresh server list**       | Re-fetch available countries from the CLI                |
 
 ### Examples
 

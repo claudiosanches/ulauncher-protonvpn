@@ -53,6 +53,5 @@ class ProtonVPNExtension(Extension):
         self.subscribe(PreferencesUpdateEvent, PreferencesUpdateEventListener())
 
 
-
 if __name__ == "__main__":
     ProtonVPNExtension().run()
