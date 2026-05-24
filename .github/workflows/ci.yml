@@ -1,0 +1,41 @@
+name: Tests
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+    types: [opened, synchronize, reopened]
+
+jobs:
+  test:
+    name: Run Unit Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgirepository-2.0-dev libcairo2-dev gir1.2-notify-0.7
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+          pip-version: '26'
+          cache: pip
+          cache-dependency-path: pyproject.toml
+          pip-install: --group test
+
+      - name: Install Ulauncher (not on PyPI — install from source)
+        run: |
+          pip install "git+https://github.com/Ulauncher/Ulauncher.git@5.15.7#egg=ulauncher"
+
+      - name: Run tests with pytest
+        run: |
+          pytest

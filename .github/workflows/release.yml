@@ -1,0 +1,39 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - '*.*.*' # Trigger on version tags like v1.0.0
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Extract Release Notes
+        id: extract_notes
+        env:
+          VERSION: ${{ github.ref_name }}
+        run: |
+          # Use awk to extract content between the target version and the next header
+          # - matches "## [VERSION]" (even if it has a date like " - 2026-04-28")
+          # - stops at the next "## ["
+          awk -v ver="[$VERSION]" '/^## / { if (p) exit; if ($2 ~ ver) p=1; next } p' CHANGELOG.md > release_notes.md
+
+          # Check if notes were found
+          if [ ! -s release_notes.md ]; then
+            echo "No notes found for version $VERSION"
+            echo "Release $VERSION" > release_notes.md
+          fi
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v3
+        with:
+          body_path: release_notes.md
+          draft: false
+          prerelease: false
+          make_latest: true

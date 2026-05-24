@@ -1,0 +1,25 @@
+{
+  "required_api_version": "2",
+  "name": "ProtonVPN",
+  "description": "Connect and manage ProtonVPN quickly from Ulauncher",
+  "developer_name": "Claudio Sanches",
+  "icon": "images/icon.svg",
+  "options": {
+    "query_debounce": 0.5
+  },
+  "preferences": [
+    {
+      "id": "pvpn_kw",
+      "type": "keyword",
+      "name": "ProtonVPN",
+      "default_value": "pvpn"
+    },
+    {
+      "id": "pvpn_max_entry",
+      "type": "input",
+      "name": "Max results",
+      "description": "Maximum number of countries/cities to show in results",
+      "default_value": "10"
+    }
+  ]
+}
