@@ -3,6 +3,8 @@
 An unofficial [Ulauncher](https://ulauncher.io/) extension to control
 [ProtonVPN](https://protonvpn.com/) directly from your launcher.
 
+![screenshot](images/screenshot.png)
+
 > **Disclaimer:** This is an independent, community-made extension and is not
 > affiliated with, endorsed by, or supported by Proton AG.
 
