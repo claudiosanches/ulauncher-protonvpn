@@ -3,6 +3,7 @@
 from unittest.mock import MagicMock, patch
 
 from src.listeners import (
+    ACT_CONNECT_FASTEST,
     ACT_SHOW_CITIES,
     ACT_SHOW_CONNECT,
     ItemEnterEventListener,
@@ -46,6 +47,10 @@ def _make_extension(query="", status=None, has_cache=True):
 
 def _item_names(result):
     return [item.get_name() for item in result.result_list]
+
+
+def _item_descriptions(result):
+    return [item.get_description("") for item in result.result_list]
 
 
 # ---------------------------------------------------------------------------
@@ -94,6 +99,22 @@ class TestHomeScreen:
         assert not any("fastest" in n.lower() for n in names)
         assert not any("country" in n.lower() for n in names)
 
+    def test_connected_home_hides_none_status_fields(self):
+        status = {
+            "server": "BR#116",
+            "load": None,
+            "protocol": None,
+            "ip": None,
+        }
+        ext, event = _make_extension(query="", status=status)
+        listener = KeywordQueryEventListener()
+        with patch("src.listeners.Utils"):
+            result = listener.on_event(event, ext)
+        descriptions = _item_descriptions(result)
+        assert any("Load: ?" in d for d in descriptions)
+        assert any("Protocol: ?" in d for d in descriptions)
+        assert not any("None" in d for d in descriptions)
+
     def test_home_shows_fetch_when_no_cache(self):
         ext, event = _make_extension(query="", has_cache=False)
         listener = KeywordQueryEventListener()
@@ -133,6 +154,16 @@ class TestConnectScreen:
             result = listener.on_event(event, ext)
         names = _item_names(result)
         assert any("No countries found" in n for n in names)
+
+    def test_empty_country_cache_prompts_refresh(self):
+        ext, event = _make_extension(query="ger", has_cache=False)
+        ext.pvpn.get_countries.return_value = []
+        listener = KeywordQueryEventListener()
+        with patch("src.listeners.Utils"):
+            result = listener.on_event(event, ext)
+        names = _item_names(result)
+        assert any("Server list not available" in n for n in names)
+        assert not any("No countries found" in n for n in names)
 
 
 # ---------------------------------------------------------------------------
@@ -175,3 +206,34 @@ class TestCityScreen:
         names = _item_names(result)
         assert any("United States" in n for n in names)
         assert any("Germany" in n for n in names)
+
+
+# ---------------------------------------------------------------------------
+# Connect actions
+# ---------------------------------------------------------------------------
+
+
+class TestConnectActions:
+    def _enter_event(self, data):
+        event = MagicMock()
+        event.get_data.return_value = data
+        return event
+
+    def test_successful_connect_schedules_status_refresh(self):
+        ext, _ = _make_extension()
+        ext.pvpn.connect.return_value = (True, "146.70.98.133")
+        listener = ItemEnterEventListener()
+        event = self._enter_event({"action": ACT_CONNECT_FASTEST})
+
+        with (
+            patch("src.listeners.Utils"),
+            patch(
+                "src.listeners._run_in_background", side_effect=lambda target: target()
+            ),
+            patch("src.listeners._refresh_status_soon") as mock_refresh_status,
+        ):
+            listener.on_event(event, ext)
+
+        ext.pvpn.connect.assert_called_once_with()
+        mock_refresh_status.assert_called_once_with(ext.pvpn)
+        ext.pvpn.get_status.assert_not_called()

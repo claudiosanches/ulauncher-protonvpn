@@ -77,6 +77,13 @@ def _run_in_background(target: Callable[[], None]) -> None:
     threading.Thread(target=target, daemon=True).start()
 
 
+def _refresh_status_soon(pvpn, delay: float = 2.0) -> None:
+    """Refresh status shortly after connect, once the CLI has settled."""
+    timer = threading.Timer(delay, pvpn.get_status)
+    timer.daemon = True
+    timer.start()
+
+
 # ---------------------------------------------------------------------------
 # KeywordQueryEventListener
 # ---------------------------------------------------------------------------
@@ -109,9 +116,9 @@ class KeywordQueryEventListener(EventListener):
         status = pvpn.get_status()
 
         if status:
-            server = status.get("server", "Unknown server")
-            load = status.get("load", "?")
-            protocol = status.get("protocol", "?")
+            server = status.get("server") or "Unknown server"
+            load = status.get("load") or "?"
+            protocol = status.get("protocol") or "?"
             ip = status.get("ip")
             m = re.match(r"([A-Z]{2})#", server or "")
             flag = Utils.flag_path(m.group(1) if m else "")
@@ -171,6 +178,17 @@ class KeywordQueryEventListener(EventListener):
         items = []
 
         countries = pvpn.get_countries()
+        if not countries:
+            items.append(
+                _item(
+                    "Server list not available",
+                    "Run Refresh server list first, then search again",
+                    icon,
+                    _action({"action": ACT_REFRESH}),
+                )
+            )
+            return items
+
         q = country_filter.lower()
         matches = [
             c for c in countries if q in c["name"].lower() or q in c["code"].lower()
@@ -321,6 +339,8 @@ class ItemEnterEventListener(EventListener):
                     "ProtonVPN",
                     message,
                 )
+                if success:
+                    _refresh_status_soon(pvpn)
 
             _run_in_background(_do_connect)
             Utils.notify("ProtonVPN", "Connecting to fastest server…")
@@ -344,6 +364,8 @@ class ItemEnterEventListener(EventListener):
                     "ProtonVPN",
                     message,
                 )
+                if success:
+                    _refresh_status_soon(pvpn)
 
             _run_in_background(_do_connect)
             Utils.notify("ProtonVPN", f"Connecting to {code}…")
@@ -368,6 +390,8 @@ class ItemEnterEventListener(EventListener):
                     "ProtonVPN",
                     message,
                 )
+                if success:
+                    _refresh_status_soon(pvpn)
 
             _run_in_background(_do_connect)
             Utils.notify("ProtonVPN", f"Connecting to {city}, {code}…")

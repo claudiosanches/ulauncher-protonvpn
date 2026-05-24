@@ -4,6 +4,8 @@ import json
 import time
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from src.protonvpn import ProtonVPN
 
 
@@ -61,6 +63,12 @@ def _pvpn_no_cache():
     pvpn._countries = []
     pvpn._cities = {}
     return pvpn
+
+
+@pytest.fixture(autouse=True)
+def isolate_cache_file(tmp_path, monkeypatch):
+    """Keep tests from reading or writing the user's extension cache."""
+    monkeypatch.setattr(ProtonVPN, "CACHE_FILE", tmp_path / "cache.json")
 
 
 # ---------------------------------------------------------------------------
