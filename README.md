@@ -1,5 +1,7 @@
 # Ulauncher ProtonVPN Extension
 
+[![CI](https://github.com/claudiosanches/ulauncher-protonvpn/actions/workflows/ci.yml/badge.svg)](https://github.com/claudiosanches/ulauncher-protonvpn/actions/workflows/ci.yml)
+
 An unofficial [Ulauncher](https://ulauncher.io/) extension to control
 [ProtonVPN](https://protonvpn.com/) directly from your launcher.
 
