@@ -88,18 +88,13 @@ jobs:
         run: |
           python -m pytest --cov=src
 
-      - name: List coverage files
-        run: |
-          echo "Working dir: $(pwd)"
-          ls -la .coverage* 2>/dev/null || echo "No .coverage files found"
-          python -c "import pytest_cov; print('pytest-cov version:', pytest_cov.__version__)" || echo "pytest-cov not importable"
-
       - name: Upload coverage data
         uses: actions/upload-artifact@v4.6.2
         with:
           name: coverage-data
           path: .coverage
           if-no-files-found: error
+          include-hidden-files: true
 
   coverage:
     name: Coverage
