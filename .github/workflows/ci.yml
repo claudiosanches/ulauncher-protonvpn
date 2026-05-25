@@ -82,11 +82,11 @@ jobs:
 
       - name: Install pytest-cov
         run: |
-          pip install pytest-cov
+          python -m pip install pytest-cov
 
       - name: Run pytest
         run: |
-          pytest --cov=src
+          python -m pytest --cov=src
 
       - name: Upload coverage data
         uses: actions/upload-artifact@v4.6.2
@@ -115,7 +115,7 @@ jobs:
 
       - name: Install coverage
         run: |
-          pip install coverage
+          python -m pip install coverage
 
       - name: Download coverage data
         uses: actions/download-artifact@v4.3.0
@@ -124,4 +124,4 @@ jobs:
 
       - name: Report coverage
         run: |
-          coverage report --show-missing
+          python -m coverage report --show-missing
