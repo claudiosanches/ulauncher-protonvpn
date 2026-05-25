@@ -126,3 +126,4 @@ jobs:
       - name: Report coverage
         run: |
           python -m coverage report --show-missing
+          python -m coverage report --format=markdown >> $GITHUB_STEP_SUMMARY
